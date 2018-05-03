@@ -1,0 +1,6 @@
+--ui mocha-typescript
+--require source-map-support/register
+--compilers ts-node/register
+--full-trace
+--bail
+test/tests.ts
