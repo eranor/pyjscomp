@@ -53,7 +53,7 @@ import {
     Subtraction,
     Value,
     ValueType} from './ast/index'
-import {IndentationError, NameError, NotImplementedError, SyntaxError} from './errors'
+import {CompilationError, IndentationError, NameError, NotImplementedError, SyntaxError} from './errors'
 import {Scope} from './context'
 import {Rule} from './rule'
 import {
@@ -98,10 +98,16 @@ export class Compiler {
                 if (this.checkNewline({nextToken: false, checkEOF: true})) return result
                 this.nextToken()
             } else if (this.token.value == KEYWORD_IF) {
+                if (this.rules.find(it=>it.getName() === "DisableIf")){
+                    throw new CompilationError("If statement is disabled")
+                }
                 result.push(this.ifOperation(scope))
             } else if (this.token.value == KEYWORD_FOR) {
                 throw new NotImplementedError()
             } else if (this.token.value == KEYWORD_WHILE) {
+                if (this.rules.find(it=>it.getName() === "DisableWhile")){
+                    throw new CompilationError("While statement is disabled")
+                }
                 this.nextToken()
                 let condition = new ExpressionStatement(this.booleanOrOperation(scope))
                 if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`, this.token.value)
@@ -110,6 +116,9 @@ export class Compiler {
                 result.push(new WhileLoopStatement(condition, this.compile_inner(scope)))
                 this.checkDedent()
             } else if (this.token.value == KEYWORD_DEF) {
+                if (this.rules.find(it=>it.getName() === "DisableFunctionDef")){
+                    throw new CompilationError("Function definition is disabled")
+                }
                 this.nextToken()
                 let name = this.token.value
                 this.nextToken()
@@ -136,6 +145,9 @@ export class Compiler {
                 this.checkDedent()
                 this.nextToken()
             } else if (this.token.value == KEYWORD_PRINT) {
+                if (this.rules.find(it=>it.getName() === "DisablePrint")){
+                    throw new CompilationError("Print is disabled")
+                }
                 this.checkLeftParenth()
                 this.nextToken()
                 let body = new ExpressionStatement(this.expresionSequence(scope))
