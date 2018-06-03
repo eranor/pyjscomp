@@ -123,6 +123,12 @@ export default class Lexer {
             while (whitespaceChars.indexOf(this.look) > -1 || this.look == COMMENT_TOKEN_SINGLE) {
                 if (WHITESPACE_CHARS['NEWLINE'].indexOf(this.look) > -1) {
                     this.parseNewline()
+                    if (WHITESPACE_CHARS['NEWLINE'].indexOf(this.look) > -1) {
+                        while (this.lexeme.length < this.indentationStack.top()) {
+                            this.indentationStack.pop()
+                            this.tokens.push(DEDENT)
+                        }
+                    }
                 } else if (this.look == COMMENT_TOKEN_SINGLE) {
                     this.parseComment()
                 } else {
@@ -133,13 +139,15 @@ export default class Lexer {
                 }
             }
             let indentationLevel = this.lexeme.length
-            if (!this.implicit_join) {
-                if (indentationLevel > this.indentationStack.top()) {
-                    this.indentationStack.push(indentationLevel)
-                    this.tokens.push(INDENT)
+            if (Math.floor((indentationLevel + 1) / TAB_WIDTH) > 0) {
+                if (!this.implicit_join) {
+                    if (indentationLevel > this.indentationStack.top()) {
+                        this.indentationStack.push(indentationLevel)
+                        this.tokens.push(INDENT)
+                    }
                 }
             }
-            if ((this._positionOnLine === 1) && (indentationLevel < this.indentationStack.top())) {
+            if (((this._positionOnLine === 0) || ((this._positionOnLine - indentationLevel) === 1)) && (indentationLevel < this.indentationStack.top())) {
                 while (indentationLevel < this.indentationStack.top()) {
                     this.indentationStack.pop()
                     this.tokens.push(DEDENT)
@@ -261,7 +269,7 @@ export default class Lexer {
             }
         }
         this._lineCount += 1
-        this._positionOnLine = 1
+        this._positionOnLine = 0
     }
 
     private parseComment() {

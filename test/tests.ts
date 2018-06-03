@@ -28,16 +28,29 @@ class LexerTest {
 
     @test 'indentation'() {
         const testString =
-`x = 1
+            `x = 1
 if x > 0:
     print('Hello World')
 `
         const lexer = new Lexer(testString, true)
-        console.log(lexer.tokens.map(it => `${it.name===''?'Token':it.name}: ${it.value}`).join('\n'))
+        console.log(lexer.tokens.map(it => `${it.name === '' ? 'Token' : it.name}: ${it.value}`).join('\n'))
     }
+
+    @test 'indentation3'() {
+        const testString =
+            `def x(a):    
+    if a > 5:
+        return a
+    else:
+        return a + x(a + 1)
+`
+        const lexer = new Lexer(testString, true)
+        console.log(lexer.tokens.map(it => `${it.name === '' ? 'Token' : it.name}: ${it.value}`).join('\n'))
+    }
+
     @test 'indentation2'() {
         const code =
-`def fact(num):
+            `def fact(num):
     factorial = 1
     while num >= 1:
         factorial = factorial * num
@@ -46,8 +59,23 @@ if x > 0:
 print("The factorial of",7,"is",fact(7))
 `
         const lexer = new Lexer(code, true)
-        console.log(lexer.tokens.map(it => it.toString()))
+        console.log(lexer.tokens.map(it => `${it.name === '' ? 'Token' : it.name}: ${it.value}`).join('\n'))
     }
+
+    @test 'indentation4'() {
+        const code =
+            `def factorial(n):
+    if n == 0:
+       return 1
+    else:
+        return n * factorial(n-1)
+
+print("The factorial of",7,"is",factorial(7))
+`
+        const lexer = new Lexer(code, true)
+        console.log(lexer.tokens.filter(it => ['INDENT', 'DEDENT', 'NEWLINE'].indexOf(it.value) !== -1).map(it => `${it.name === '' ? 'Token' : it.name}: ${it.value}`).join('\n'))
+    }
+
 
     /*
         @test matchTokens() {
@@ -88,10 +116,9 @@ print("The factorial of",7,"is",fact(7))
         }*/
 
 
-
     @test analyzeFile() {
         this.lexer = new Lexer(readCodeFromFile('./static/test.py'), true)
-        console.log(this.lexer.tokens.reduce((acc, i) => `${acc}\n${i}`))
+        console.log(this.lexer.tokens.map(it => `${it.name === '' ? 'Token' : it.name}: ${it.value}`).join('\n'))
     }
 }
 
@@ -105,10 +132,22 @@ class CompilerTest {
 
     @test testCompiler1() {
         let compiler = new Compiler()
-        compiler.compile("print(1+2)")
+        compiler.compile('print(1+2)')
         let code = compiler.compile(readCodeFromFile('./static/test.py'))
         console.log(code.code())
         //createTree(code)
+    }
+
+    @test 'testCompiler3'() {
+        const testString =
+            `def x(a):    
+    if a > 5:
+        return a
+    else:
+        return a + x(a + 1)
+`
+        let compiler = this.compiler.compile(testString)
+        console.log(compiler.code())
     }
 
     @test 'addition expression'() {
@@ -194,20 +233,20 @@ def func():
         expect(functionDefinition.code()).to.equal('function func(){console.log(5);func()}')
     }
 
-/*    @test 'functionCall2'() {
-        const code =
-            `
-def func(a):
-    print(a)
+    /*    @test 'functionCall2'() {
+            const code =
+                `
+    def func(a):
+        print(a)
 
-func(5)
-`
-        const functionDefinition = this.compiler.compile(code)
-        expect(functionDefinition.code()).to.equal('function func(a){console.log(a)};func(5)}')
-    }*/
+    func(5)
+    `
+            const functionDefinition = this.compiler.compile(code)
+            expect(functionDefinition.code()).to.equal('function func(a){console.log(a)};func(5)}')
+        }*/
     @test 'code3'() {
         const code =
-`
+            `
 # Python program to find the factorial of a number provided by the user.
 # change the value for a different result
 num = 7
@@ -228,15 +267,29 @@ print("The factorial of",num,"is",factorial)
         console.log(functionDefinition.code())
     }
 
-    @test 'code4'() {
+    @test 'factorialLoop'() {
         const code =
-`def fact(num):
+            `def fact(n):
     factorial = 1
-    while num >= 1:
-        factorial = factorial * num
-        num = num - 1
-    return num
+    while n >= 1:
+        factorial = factorial * n
+        n = n - 1
+    return factorial
 print("The factorial of",7,"is",fact(7))
+`
+        const functionDefinition = this.compiler.compile(code)
+        console.log(functionDefinition.code())
+    }
+
+    @test 'factorialRecursive'() {
+        const code =
+            `def factorial(n):
+    if n == 0:
+       return 1
+    else:
+        return n * factorial(n-1)
+
+print("The factorial of",7,"is",factorial(7))
 `
         const functionDefinition = this.compiler.compile(code)
         console.log(functionDefinition.code())
@@ -244,14 +297,57 @@ print("The factorial of",7,"is",fact(7))
 
     @test 'whileLoop1'() {
         const code =
-`
+            `
 i = 0
 while(i < 10):
     print(i)
     i = i + 1
 `
-        const functionDefinition = this.compiler.compile(code)
-        expect(functionDefinition.code()).to.equal('let i = 0;while ((i < 10)){console.log(i);i = i + 1}')
+        const whileLoop = this.compiler.compile(code)
+        expect(whileLoop.code()).to.equal('let i = 0;while ((i < 10)){console.log(i);i = i + 1}')
+    }
+
+    @test 'forLoop1'() {
+        const code =
+            `
+for i in range(5):
+    print(i)
+`
+        const forLoop = this.compiler.compile(code)
+        expect(forLoop.code()).to.equal('for (let i=0;(function(n,r,t){return 0<=t?n<r:r<=n})(i,5,1);i+=1){console.log(i)}')
+    }
+
+    @test 'forLoop2'() {
+        const code =
+            `
+for i in range(1,5):
+    print(i)
+`
+        const forLoop = this.compiler.compile(code)
+        expect(forLoop.code()).to.equal('for (let i=1;(function(n,r,t){return 0<=t?n<r:r<=n})(i,5,1);i+=1){console.log(i)}')
+    }
+
+    @test 'forLoop3'() {
+        const code =
+            `
+for i in range(5,1,-2):
+    print(i)
+`
+        const forLoop = this.compiler.compile(code)
+        expect(forLoop.code()).to.equal('for (let i=5;(function(n,r,t){return 0<=t?n<r:r<=n})(i,1,-2);i+=-2){console.log(i)}')
+    }
+
+    @test 'forLoop4'() {
+        const code =
+            `
+def test(x):
+    return x+1
+
+for i in range(test(1),5):
+    print(test(i-1))
+`
+        const forLoop = this.compiler.compile(code)
+        expect(forLoop.code()).to.equal('function test(x){return x + 1;};for (let i=test(1);(function(n,r,t){return 0<=t?n<r:r<=n})(i,5,1);i+=1){console.log(test(i - 1))}')
     }
 
 

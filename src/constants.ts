@@ -45,6 +45,7 @@ export const KEYWORD_ELIF = 'elif'
 export const KEYWORD_ELSE = 'else'
 export const KEYWORD_RETURN = 'return'
 
+export const KEYWORD_RANGE = 'range'
 export const KEYWORD_LEN = 'len'
 export const KEYWORD_SQUAREROOT = 'sqrt'
 export const KEYWORD_PRINT = 'print'

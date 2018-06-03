@@ -83,7 +83,25 @@ export class CompoundStatement extends Statement {
 }
 
 export class ForLoopStatement extends CompoundStatement {
+    step: Transpileable
+    start: Transpileable
+    private stop: Expression
+    private variable: string
 
+    constructor(variable: string, body: any, stop: Expression, start?: Expression, step?: Expression) {
+        super(body)
+        this.variable = variable
+        this.stop = stop
+        this.start = start
+        this.step = step
+    }
+
+    code() {
+        let start = this.start ? this.start.code() : 0
+        let step = this.step ? this.step.code() : 1
+        let helper = '(function(n,r,t){return 0<=t?n<r:r<=n})'
+        return `for (let ${this.variable}=${start};${helper}(${this.variable},${this.stop.code()},${step});${this.variable}+=${step}){${this.body.code()}}`
+    }
 }
 
 export class WhileLoopStatement extends CompoundStatement {

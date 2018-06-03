@@ -8,6 +8,7 @@ import {
     KEYWORD_IF,
     KEYWORD_NONE,
     KEYWORD_PRINT,
+    KEYWORD_RANGE,
     KEYWORD_RETURN,
     KEYWORD_TRUE,
     KEYWORD_WHILE,
@@ -15,7 +16,7 @@ import {
     OPERATOR_AND,
     OPERATOR_DIVISION,
     OPERATOR_EQUALS,
-    OPERATOR_GREATER,
+    OPERATOR_GREATER, OPERATOR_IN,
     OPERATOR_LESSER,
     OPERATOR_MODULO,
     OPERATOR_MULTIPLY,
@@ -52,16 +53,21 @@ import {
     SequenceExpression,
     Subtraction,
     Value,
-    ValueType} from './ast/index'
+    ValueType
+} from './ast/index'
 import {CompilationError, IndentationError, NameError, NotImplementedError, SyntaxError} from './errors'
-import {Scope} from './context'
+import {Reference, Scope} from './context'
 import {Rule} from './rule'
 import {
     AssignmentStatement,
     Clause,
     ExpressionStatement,
+    ForLoopStatement,
     FunctionDefinitionStatement,
-    IfStatement, PrintStatement, ReturnStatement, StatementList,
+    IfStatement,
+    PrintStatement,
+    ReturnStatement,
+    StatementList,
     WhileLoopStatement
 } from './ast/statements'
 
@@ -88,65 +94,77 @@ export class Compiler {
         let result = new StatementList()
         this.nextToken()
 
-        while (this.token != ENDOFFILE && this.token != null && this.token != DEDENT) {
+        while (this.token != ENDOFFILE && this.token != null) {
             if (this.token.value == KEYWORD_RETURN) {
                 if (scope.isRoot()) {
                     throw new SyntaxError('return outside of function')
                 }
                 this.nextToken()
                 result.push(new ReturnStatement(this.expresionSequence(scope)))
-                if (this.checkNewline({nextToken: false, checkEOF: true})) return result
+                if (!this.checkNewline({nextToken: false, checkEOF: true})) {
+                    this.nextToken()
+                    return result
+                }
                 this.nextToken()
             } else if (this.token.value == KEYWORD_IF) {
-                if (this.rules.find(it=>it.getName() === "DisableIf")){
-                    throw new CompilationError("If statement is disabled")
+                if (this.rules.find(it => it.getName() === 'DisableIf')) {
+                    throw new CompilationError('If statement is disabled')
                 }
                 result.push(this.ifOperation(scope))
             } else if (this.token.value == KEYWORD_FOR) {
-                throw new NotImplementedError()
-            } else if (this.token.value == KEYWORD_WHILE) {
-                if (this.rules.find(it=>it.getName() === "DisableWhile")){
-                    throw new CompilationError("While statement is disabled")
-                }
-                this.nextToken()
-                let condition = new ExpressionStatement(this.booleanOrOperation(scope))
-                if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`, this.token.value)
-                this.checkNewline({})
-                this.checkIndent()
-                result.push(new WhileLoopStatement(condition, this.compile_inner(scope)))
-                this.checkDedent()
-            } else if (this.token.value == KEYWORD_DEF) {
-                if (this.rules.find(it=>it.getName() === "DisableFunctionDef")){
-                    throw new CompilationError("Function definition is disabled")
+                if (this.rules.find(it => it.getName() === 'DisableFor')) {
+                    throw new CompilationError('For statement is disabled')
                 }
                 this.nextToken()
                 let name = this.token.value
                 this.nextToken()
-                if (this.token.value != PARENTHESES_LEFT) throw new SyntaxError('invalid syntax', this.token.value)
-                this.nextToken()
-                let args = []
-                scope.push({name, type: 'function'})
-                let localScope = new Scope(this.rules, scope)
-                while (this.token.value != PARENTHESES_RIGHT) {
-                    args.push(this.token)
-                    localScope.push({name: this.token.value, type: 'variable'})
+                if (!scope.variableInCurrent(name)) {
+                    scope.push(new Reference(name, 'variable'))
+                }
+                this.check(OPERATOR_IN)
+                this.check(KEYWORD_RANGE)
+                this.check(PARENTHESES_LEFT)
+                let start, step
+                let stop = this.booleanOrOperation(scope)
+                if (this.token.value === (SYMBOL_COMMA_DELIMIER)) {
                     this.nextToken()
-                    if (this.token.value == SYMBOL_COMMA_DELIMIER) {
+                    start = this.booleanOrOperation(scope)
+                    if (this.token.value === (SYMBOL_COMMA_DELIMIER)) {
                         this.nextToken()
+                        step = this.booleanOrOperation(scope)
                     }
                 }
-                if (this.token.value != PARENTHESES_RIGHT) throw new SyntaxError('invalid syntax', this.token.value)
-                this.nextToken()
-                if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`, this.token.value)
+                this.check(PARENTHESES_RIGHT)
+                this.check(SYMBOL_END_OF_DEFINITION, false)
                 this.checkNewline({})
                 this.checkIndent()
-                let body = this.compile_inner(localScope)
-                result.push(new FunctionDefinitionStatement(name, args, body, localScope))
+                if (start){
+                    result.push(new ForLoopStatement(name, this.compile_inner(scope), start, stop, step))
+                }else{
+                    result.push(new ForLoopStatement(name, this.compile_inner(scope), stop, start, step))
+                }
                 this.checkDedent()
                 this.nextToken()
+            } else if (this.token.value == KEYWORD_WHILE) {
+                if (this.rules.find(it => it.getName() === 'DisableWhile')) {
+                    throw new CompilationError('While statement is disabled')
+                }
+                this.nextToken()
+                let condition = new ExpressionStatement(this.booleanOrOperation(scope))
+                this.check(SYMBOL_END_OF_DEFINITION, false)
+                this.checkNewline({})
+                this.checkIndent()
+                result.push(new WhileLoopStatement(condition, this.compile_inner(scope)))
+                this.checkDedent()
+                this.nextToken()
+            } else if (this.token.value == KEYWORD_DEF) {
+                if (this.rules.find(it => it.getName() === 'DisableFunctionDef')) {
+                    throw new CompilationError('Function definition is disabled')
+                }
+                this.functionDefinitionOperation(scope, result)
             } else if (this.token.value == KEYWORD_PRINT) {
-                if (this.rules.find(it=>it.getName() === "DisablePrint")){
-                    throw new CompilationError("Print is disabled")
+                if (this.rules.find(it => it.getName() === 'DisablePrint')) {
+                    throw new CompilationError('Print is disabled')
                 }
                 this.checkLeftParenth()
                 this.nextToken()
@@ -157,13 +175,20 @@ export class Compiler {
                 if (this.checkNewline({nextToken: false, checkEOF: true})) return result
                 this.nextToken()
             } else if (this.token instanceof Token) {
+                if (this.token === DEDENT) break
+                if (this.token === NEWLINE) {
+                    this.nextToken()
+                    continue
+                }
                 let name = this.token.value
                 if (this.lexer.peekNextToken().value === OPERATOR_EQUALS) {
                     this.nextToken()
                     this.nextToken()
                     const value = new ExpressionStatement(this.booleanOrOperation(scope))
                     result.push(new AssignmentStatement(name, value, scope.variableInParentTree(name)))
-                    scope.push({name, type: 'variable'})
+                    if (!scope.variableInCurrent(name)) {
+                        scope.push(new Reference(name, 'variable'))
+                    }
                     if (this.checkNewline({nextToken: false, checkEOF: true})) return result
                     this.nextToken()
                 } else {
@@ -186,6 +211,34 @@ export class Compiler {
             }
         }
         return result
+    }
+
+    private functionDefinitionOperation(scope: Scope, result) {
+        this.nextToken()
+        let name = this.token.value
+        this.nextToken()
+        if (this.token.value != PARENTHESES_LEFT) throw new SyntaxError('invalid syntax', this.token.value)
+        this.nextToken()
+        let args = []
+        scope.push(new Reference(name, 'function'))
+        let localScope = new Scope(this.rules, scope)
+        while (this.token.value != PARENTHESES_RIGHT) {
+            args.push(this.token)
+            localScope.push(new Reference(this.token.value, 'variable', false))
+            this.nextToken()
+            if (this.token.value == SYMBOL_COMMA_DELIMIER) {
+                this.nextToken()
+            }
+        }
+        if (this.token.value != PARENTHESES_RIGHT) throw new SyntaxError('invalid syntax', this.token.value)
+        this.nextToken()
+        if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`, this.token.value)
+        this.checkNewline({})
+        this.checkIndent()
+        let body = this.compile_inner(localScope)
+        result.push(new FunctionDefinitionStatement(name, args, body, localScope))
+        this.checkDedent()
+        this.nextToken()
     }
 
     private checkEquals() {
@@ -219,8 +272,11 @@ export class Compiler {
             return true
         }
         if (nextToken) this.nextToken()
-        if (this.token != NEWLINE) throw new IndentationError(this.lexer.positionOnLine, this.lexer.lineCount, this.token.value)
-        return false
+        if (this.token == NEWLINE) {
+            return false
+        } else {
+            throw new IndentationError(this.lexer.positionOnLine, this.lexer.lineCount, this.token.value)
+        }
     }
 
     private nextToken() {
@@ -230,15 +286,17 @@ export class Compiler {
 
     private ifOperation(scope: Scope) {
         let clauses = []
-        this.nextToken()
-        let clauseExpression = new ExpressionStatement(this.booleanOrOperation(scope))
-        if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`)
-        this.checkNewline({})
-        this.checkIndent()
-        let clauseBody = this.compile_inner(scope)
-        clauses.push(new Clause(clauseExpression, clauseBody))
-        this.checkDedent()
-        this.nextToken()
+        if (this.token.value == KEYWORD_IF) {
+            this.nextToken()
+            let clauseExpression = new ExpressionStatement(this.booleanOrOperation(scope))
+            if (this.token.value != SYMBOL_END_OF_DEFINITION) throw new SyntaxError(`invalid syntax`)
+            this.checkNewline({})
+            this.checkIndent()
+            let clauseBody = this.compile_inner(scope)
+            clauses.push(new Clause(clauseExpression, clauseBody))
+            this.checkDedent()
+            this.nextToken()
+        }
         if (this.token.value == KEYWORD_ELIF) {
             this.nextToken()
             let clauseExpression2 = new ExpressionStatement(this.booleanOrOperation(scope))
@@ -472,6 +530,13 @@ export class Compiler {
             } else {
                 return new SequenceExpression(...sequence)
             }
+        }
+    }
+
+    private check(constant: string, nextToken = true) {
+        if (this.token.value !== constant) throw new SyntaxError(`invalid syntax`, this.token.value)
+        if (nextToken) {
+            this.nextToken()
         }
     }
 }
